@@ -5,7 +5,7 @@
 xcoding <- c(1, 1, 1, 1, 1) 
 
 # MCMC (Markov Chain Monte Carlo) ayarları
-mcmc_ayarlari <- list(R = 2000, use = 1000) # Hızlı sonuç için düşük tuttum
+mcmc_ayarlari <- list(R = 2000, use = 1000) # Hızlı sonuç için düşük tutulmalı
 
 # Modeli Çalıştır
 # Not: Bu işlem bilgisayar hızına göre +/- birkaç saniye sürebilir.
@@ -16,4 +16,5 @@ model_output <- choicemodelr(data = final_data, xcoding = xcoding,
 # Sonuçları inceleme (Özet)
 # out$betadraw, her birey için tahmin edilen katsayıları (part-worths) içerir.
 print("Model tamamlandı. Katsayı ortalamaları:")
+
 
