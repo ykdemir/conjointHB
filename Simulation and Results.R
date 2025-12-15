@@ -2,92 +2,70 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 
-# 1. Dosyayı Oku (outputs klasöründe)
+# 1. VERİYİ HAZIRLA
 df_betas <- read.csv("outputs/rbetas.csv")
+colnames(df_betas) <- c("ID", "Beta_Price", "Beta_Dens", "Beta_Type", "Beta_Integ", "Beta_Time")
 
-# 2. Sütun İsimlerini Anlaşılır Hale Getir
-# Sıralama: Fiyat, Yoğunluk, Tip, Entegrasyon, Süre
-colnames(df_betas) <- c("ID", "Fiyat_Beta", "Yogunluk_Beta", "Tip_Beta", "Integ_Beta", "Sure_Beta")
+# 2. SENARYOLARI (ÜRÜNLERİ) TANIMLA
+senaryolar <- data.frame(
+  Urun = c("Seçenek A", "Seçenek B", "Mevcut"),
+  Price = c(1, 3, 2),
+  Dens  = c(1, 2, 3),
+  Type  = c(1, 2, 1),
+  Integ = c(1, 1, 2),
+  Time  = c(2, 2, 2)
+)
 
-# Veriyi kontrol et
-print(head(df_betas))
+# 3. SİMÜLASYON FONKSİYONU
+hesapla_pazar_payi <- function(betas, urunler) {
+  n_kisi <- nrow(betas)
+  n_urun <- nrow(urunler)
+  olasiliklar <- matrix(0, nrow = n_kisi, ncol = n_urun)
+  
+  for (i in 1:n_kisi) {
+    b <- betas[i, ]
+    utilities <- numeric(n_urun)
+    
+    for (j in 1:n_urun) {
+      u <- (b$Beta_Price * urunler$Price[j]) +
+        (b$Beta_Dens  * urunler$Dens[j]) +
+        (b$Beta_Type  * urunler$Type[j]) +
+        (b$Beta_Integ * urunler$Integ[j]) +
+        (b$Beta_Time  * urunler$Time[j])
+      utilities[j] <- u
+    }
+    
+    exp_u <- exp(utilities)
+    probs <- exp_u / sum(exp_u)
+    olasiliklar[i, ] <- probs
+  }
+  pazar_paylari <- colMeans(olasiliklar) * 100
+  return(pazar_paylari)
+}
 
-# ÖNEM DÜZEYİ HESAPLAMA
+# Fonksiyonu çalıştır
+sonuc_paylar <- hesapla_pazar_payi(df_betas, senaryolar)
 
-# Her niteliğin "Etki Gücü"nü hesaplayalım.
-# Katsayıların mutlak değerinin ortalamasını alıyoruz (Mutlak değer çünkü yönü değil, şiddeti önemli)
-onem_tablosu <- df_betas %>%
-  select(-ID) %>%  # ID sütununu çıkar
-  summarise(
-    Fiyat = mean(abs(Fiyat_Beta)),
-    Yogunluk = mean(abs(Yogunluk_Beta)),
-    Tip = mean(abs(Tip_Beta)),
-    Entegrasyon = mean(abs(Integ_Beta)),
-    Sure = mean(abs(Sure_Beta))
-  ) %>%
-  pivot_longer(cols = everything(), names_to = "Nitelik", values_to = "Skor") %>%
-  mutate(Yuzde = (Skor / sum(Skor)) * 100) # Yüzdeye çevir
+# Sonucu veri çerçevesine dök
+simulasyon_sonucu <- data.frame(
+  Urun = senaryolar$Urun,
+  Pazar_Payi = sonuc_paylar
+)
 
-ggplot(onem_tablosu, aes(x = reorder(Nitelik, Yuzde), y = Yuzde, fill = Nitelik)) +
-  geom_bar(stat = "identity") +
-  coord_flip() +
-  theme_minimal() +
-  labs(x = NULL,
-       y = "Önem Düzeyi (%)") +
-  theme(legend.position = "none",
-        text = element_text(size = 12)) +
-  geom_text(
-    aes(label = sprintf("%%%.1f", Yuzde)),
-    hjust = 1.1,         # Çubuğun içine gelecek şekilde
-    fontface = "bold",
-    color = "black",
-    family = "sans"
+# 4. GÖRSELLEŞTİRME (ŞEKİL 5) - GÜNCELLENMİŞ KOD
+ggplot(simulasyon_sonucu, aes(x = Urun, y = Pazar_Payi, fill = Urun)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  theme_bw() +
+  labs(
+    x = NULL,
+    y = "Tahmini Pazar Payı (%)" # Y ekseni başlığı
   ) +
-  scale_fill_brewer(palette = "Set2")
-
-
-library(dplyr)
-library(ggplot2)
-
-# 1. Tahmin Edilen Değerleri Oku ve Ortalamasını Al
-df_tahmin <- read.csv("outputs/rbetas.csv")
-
-# Sütun isimlerinin düzenlenmesi
-colnames(df_tahmin) <- c("ID", "Fiyat", "Yogunluk", "Tip", "Entegrasyon", "Sure")
-
-# Ortalamaların hesaplanması
-tahmin_ortalamalar <- colMeans(df_tahmin[, -1]) # ID hariç
-
-# 2. Gerçek (Hedef) Değerleri Tanımla
-gercek_degerler <- c(
-  Fiyat = -1.5,
-  Yogunluk = 0.8,
-  Tip = 1.2,
-  Entegrasyon = 0.5,
-  Sure = -0.3
-)
-
-# 3. Yan Yana Karşılaştırma Tablosu
-karsilastirma <- data.frame(
-  Nitelik = names(gercek_degerler),
-  Gercek_Beta = gercek_degerler,
-  Tahmin_Beta = as.numeric(tahmin_ortalamalar)
-)
-
-# Ölçek farkını görmek için Oran (Ratio) hesaplayalım
-# Model genelde her şeyi sabit bir katsayı ile çarpar (Scale Factor)
-karsilastirma$Oran = karsilastirma$Tahmin_Beta / karsilastirma$Gercek_Beta
-
-print("KATSAYI KARŞILAŞTIRMASI")
-print(karsilastirma)
-
-# 4. Görselleştirme (Scatter Plot)
-# Eğer noktalar bir doğru üzerindeyse model mükemmel çalışmış demektir.
-ggplot(karsilastirma, aes(x = Gercek_Beta, y = Tahmin_Beta, label = Nitelik)) +
-  geom_point(color = "red", size = 4) +
-  geom_text(vjust = -0.5, fontface = "bold") +
-  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "blue") +
-  theme_minimal() +
-  labs(x = "Gerçek Değerler",
-       y = "Modelin Tahminleri")
-
+  geom_text(aes(label = sprintf("%%%.1f", Pazar_Payi)), vjust = -0.5, fontface = "bold", family = "serif", size = 5) +
+  scale_fill_manual(values = c("gray70", "gray40", "#2E86C1")) +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold", size = 14),
+        # X ekseni metin fontu
+        axis.text.x = element_text(size = 14, face = "bold", family = "serif"),
+        # Y EKSENİ BAŞLIĞI İÇİN GEREKLİ EKLEME
+        axis.title.y = element_text(face = "bold", size = 14, family = "serif")) +
+  ylim(0, 100)
